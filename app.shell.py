@@ -1,6 +1,6 @@
 import tiktoken
 from tiktoken import get_encoding
-from weaviate_interface import WeaviateClient
+from weaviate_interface import WeaviateClient, WhereFilter
 from prompt_templates import question_answering_prompt_series, question_answering_system
 from openai_interface import GPT_Turbo
 from app_features import (convert_seconds, generate_prompt_series, search_result,
@@ -8,13 +8,14 @@ from app_features import (convert_seconds, generate_prompt_series, search_result
 from reranker import ReRanker
 from loguru import logger 
 import streamlit as st
+import numpy as np
 import sys
 import json
 import os
 
 # load environment variables
 from dotenv import load_dotenv
-load_dotenv('keys.env', override=True)
+load_dotenv('./keys.env', override=True)
 
 custom_css = '''
 <style>
@@ -36,26 +37,31 @@ st.set_page_config(page_title="Impact Theory",
 ##############
 # START CODE #
 ##############
-data_path = './data/impact_theory_data.json'
 
 ## RETRIEVER
-#api_key = os.environ['WEAVIATE_API_KEY']
-#url = os.environ['WEAVIATE_ENDPOINT']
-
-api_key= "nmOHZaFBsPIBC9itZNVAMW4Ym7NK1uKucqUE"
-url= "https://vectorsearch-application-5tkokaup.weaviate.network"
+api_key = os.environ['WEAVIATE_API_KEY']
+openAI_api_key = os.environ['OPENAI_API_KEY']
+url = os.environ['WEAVIATE_ENDPOINT']
 
 #instantiate client
+# If I want weviate to use a new embedding model (like a fine-tuned one) I should explicitely pass it with the argument model_name_or_path
 client = WeaviateClient(api_key, url)
+# These are the different datasets available in the Weaviate datastore. I can have different chunk sizes or different embedding models.
+# We can make them available as a drop down menu on the side bar 
+available_classes = sorted(client.show_classes())
+logger.info(available_classes)
 
 ## RERANKER
 reranker = ReRanker(model_name='cross-encoder/ms-marco-MiniLM-L-6-v2')
 
 ## LLM 
-llm = GPT_Turbo()
+model_name = 'gpt-3.5-turbo-0613'
+# I should pass the openAI api key here
+llm = GPT_Turbo(model=model_name, api_key=openAI_api_key)
 
 ## ENCODING
-encoding = tiktoken.encoding_for_model('gpt-3.5-turbo-0613')
+# This is the tokenizer, we only need it to count the prompt tokens
+encoding = tiktoken.encoding_for_model(model_name)
 
 ## INDEX NAME
 index_name = 'Impact_theory_minilm_256'
@@ -63,6 +69,7 @@ index_name = 'Impact_theory_minilm_256'
 ##############
 #  END CODE  #
 ##############
+data_path = './data/impact_theory_data.json'
 data = load_data(data_path)
 #creates list of guests for sidebar
 guest_list = sorted(list(set([d['guest'] for d in data])))
@@ -70,7 +77,16 @@ guest_list = sorted(list(set([d['guest'] for d in data])))
 def main():
 
     with st.sidebar:
+        st.subheader(f"Personalise your search!")
+        index = st.selectbox('Select Index/Class. \n Name convention means: <embedding model>_<chunk size>', options=available_classes, index=None, placeholder='Select Index/Class')
         guest = st.selectbox('Select Guest', options=guest_list, index=None, placeholder='Select Guest')
+        alpha_slider = st.slider('Hybrid Search weights: 0 = keyword search, 1 = vector search', 0.00, 1.00, 0.30, step=0.05)
+        n_slider = st.slider('Hybrid retrieval hits: lower = less docs considered but quicker, higher = more docs considered but slower', 10, 300, 10, step=10)
+        k_slider = st.slider('Re ranker final hits: chunks of context actually passed to the LLM and displayed', 1, 5, 3, step=1)
+        llm_temperature_slider = st.slider('LLM temperature: 0 = deterministic, 2 = random', 0.0, 2.0, 0.10, step=0.1)
+        
+    # Otherwise we get an error from the other functions already coded:
+    client.display_properties.append('summary')
 
     st.image('./assets/impact-theory-logo.png', width=400)
     st.subheader(f"Chat with the Impact Theory podcast: ")
@@ -81,86 +97,81 @@ def main():
         st.write('\n\n\n\n\n')
 
         if query:
-            ##############
-            # START CODE #
-            ##############
 
-            st.write('Hmmm...this app does not seem to be working yet.  Please check back later.')
-            if guest:
-                st.write(f'However, it looks like you selected {guest} as a filter.')
             # make hybrid call to weaviate
-            hybrid_response = client.hybrid_search(query, index_name, alpha=0.25, limit=10)
+            guest_filter = WhereFilter(path=['guest'], operator='Equal', valueText=guest).todict() if guest else None
+            hybrid_response = client.hybrid_search(query, 
+                                                   index_name, 
+                                                   alpha=alpha_slider, 
+                                                   limit=n_slider, 
+                                                   display_properties=client.display_properties, 
+                                                   where_filter=guest_filter)
             # rerank results
-            ranked_response = reranker.rerank(hybrid_response, query, apply_sigmoid=True)
+            ranked_response = reranker.rerank(hybrid_response, 
+                                              query, 
+                                              top_k=k_slider, 
+                                              apply_sigmoid=True)
+            
             # validate token count is below threshold
+            token_threshold = 4000
             valid_response = validate_token_threshold(ranked_response, 
                                                         question_answering_prompt_series, 
                                                         query=query,
                                                         tokenizer=encoding,
-                                                        token_threshold=4000, 
+                                                        token_threshold=token_threshold, 
                                                         verbose=True)
-            ##############
-            #  END CODE  #
-            ##############
-
-            # # generate LLM prompt
-            prompt = generate_prompt_series(query=query, results=valid_response)
             
-            # # prep for streaming response
+            # prep for streaming response
+            llm_call = True
             st.subheader("Response from Impact Theory (context)")
-            with st.spinner('Generating Response...'):
-                 st.markdown("----")
-            #     #creates container for LLM response
-                 chat_container, response_box = [], st.empty()
-            #     
-            #     # execute chat call to LLM
-            #                  ##############
-            #                  # START CODE #
-            #                  ##############
-            #     
+            if llm_call:
+                with st.spinner('Generating Response...'):
+                     st.markdown("----")
+                     #creates container for LLM response
+                     chat_container, response_box = [], st.empty()  
+                     # generate LLM prompt
+                     prompt = generate_prompt_series(query=query, results=valid_response)
 
-            #                  ##############
-            #                  #  END CODE  #
-            #                  ##############
-            try:
+                     try:
+                     # execute chat call to LLM
+                        for resp in llm.get_chat_completion(prompt=prompt, 
+                                                            temperature=llm_temperature_slider,
+                                                            max_tokens=400,
+                                                            show_response=True,
+                                                            stream=True):
                         #inserts chat stream from LLM
-                        with response_box:
-                            #content = resp.choices[0].delta.content
-                            content = prompt
-                            if content:
-                                chat_container.append(content)
-                                result = "".join(chat_container).strip()
-                                st.write(f'{result}')
-            except Exception as e:
+                            with response_box:
+                                content = resp.choices[0].delta.content
+                                if content:
+                                    chat_container.append(content)
+                                    result = "".join(chat_container).strip()
+                                    st.write(f'{result}')
+                     except Exception as e:
                         print(e)
                        # continue
-            # ##############
-            # # START CODE #
-            # ##############
-            # st.subheader("Search Results")
-            # for i, hit in enumerate(valid_response):
-            #     col1, col2 = st.columns([7, 3], gap='large')
-            #     image = # get thumbnail_url
-            #     episode_url = # get episode_url
-            #     title = # get title
-            #     show_length = # get length
-            #     time_string = # convert show_length to readable time string
-            # ##############
-            # #  END CODE  #
-            # ##############
-            #     with col1:
-            #         st.write( search_result(  i=i, 
-                                                # url=episode_url,
-                                                # guest=hit['guest'],
-                                                # title=title,
-                                                # content=hit['content'], 
-                                                # length=time_string),
-            #                 unsafe_allow_html=True)
-            #         st.write('\n\n')
-            #     with col2:
-            #         # st.write(f"<a href={episode_url} <img src={image} width='200'></a>", 
-            #         #             unsafe_allow_html=True)
-            #         st.image(image, caption=title.split('|')[0], width=200, use_column_width=False)
+
+            st.subheader("Search Results")
+            for i, hit in enumerate(valid_response):
+                 col1, col2 = st.columns([7, 3], gap='large')
+                 image = hit['thumbnail_url']
+                 episode_url = hit['episode_url']
+                 title = hit['title']
+                 show_length = hit['length']
+                 time_string = convert_seconds(show_length)
+
+                 with col1:
+                     st.write( search_result(i=i, 
+                                             url=episode_url,
+                                             guest=hit['guest'],
+                                             title=title,
+                                             content=hit['content'], 
+                                             length=time_string),
+                                             unsafe_allow_html=True)
+                     st.write('\n\n')
+                 with col2:
+                      #st.write(f"{episode_url} <img src={image} width='200'></a>", 
+                      #           unsafe_allow_html=True)
+                      st.image(image, caption=title.split('|')[0], width=200, use_column_width=False)
 
 if __name__ == '__main__':
     main()
