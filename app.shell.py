@@ -1,3 +1,4 @@
+import tiktoken
 from tiktoken import get_encoding
 from weaviate_interface import WeaviateClient
 from prompt_templates import question_answering_prompt_series, question_answering_system
@@ -13,7 +14,18 @@ import os
 
 # load environment variables
 from dotenv import load_dotenv
-load_dotenv('.env', override=True)
+load_dotenv('keys.env', override=True)
+
+custom_css = '''
+<style>
+h1 {
+    background-color: #f1f1f1;
+}
+</style>
+'''
+
+#st.markdown(custom_css, unsafe_allow_html=True)
+        
  
 ## PAGE CONFIGURATION
 st.set_page_config(page_title="Impact Theory", 
@@ -25,15 +37,28 @@ st.set_page_config(page_title="Impact Theory",
 # START CODE #
 ##############
 data_path = './data/impact_theory_data.json'
+
 ## RETRIEVER
+#api_key = os.environ['WEAVIATE_API_KEY']
+#url = os.environ['WEAVIATE_ENDPOINT']
+
+api_key= "nmOHZaFBsPIBC9itZNVAMW4Ym7NK1uKucqUE"
+url= "https://vectorsearch-application-5tkokaup.weaviate.network"
+
+#instantiate client
+client = WeaviateClient(api_key, url)
 
 ## RERANKER
+reranker = ReRanker(model_name='cross-encoder/ms-marco-MiniLM-L-6-v2')
 
 ## LLM 
+llm = GPT_Turbo()
 
 ## ENCODING
+encoding = tiktoken.encoding_for_model('gpt-3.5-turbo-0613')
 
 ## INDEX NAME
+index_name = 'Impact_theory_minilm_256'
 
 ##############
 #  END CODE  #
@@ -43,7 +68,7 @@ data = load_data(data_path)
 guest_list = sorted(list(set([d['guest'] for d in data])))
 
 def main():
-        
+
     with st.sidebar:
         guest = st.selectbox('Select Guest', options=guest_list, index=None, placeholder='Select Guest')
 
@@ -64,29 +89,29 @@ def main():
             if guest:
                 st.write(f'However, it looks like you selected {guest} as a filter.')
             # make hybrid call to weaviate
-            hybrid_response = None
+            hybrid_response = client.hybrid_search(query, index_name, alpha=0.25, limit=10)
             # rerank results
-            ranked_response = None
+            ranked_response = reranker.rerank(hybrid_response, query, apply_sigmoid=True)
             # validate token count is below threshold
-            # valid_response = validate_token_threshold(ranked_response, 
-                                                    #    question_answering_prompt_series, 
-                                                    #    query=query,
-                                                    #    tokenizer= # variable from ENCODING,
-                                                    #    token_threshold=4000, 
-                                                    #    verbose=True)
+            valid_response = validate_token_threshold(ranked_response, 
+                                                        question_answering_prompt_series, 
+                                                        query=query,
+                                                        tokenizer=encoding,
+                                                        token_threshold=4000, 
+                                                        verbose=True)
             ##############
             #  END CODE  #
             ##############
 
             # # generate LLM prompt
-            # prompt = generate_prompt_series(base_prompt=question_answering_prompt_series, query=query, results=valid_response)
+            prompt = generate_prompt_series(query=query, results=valid_response)
             
             # # prep for streaming response
-            # st.subheader("Response from Impact Theory (context)")
-            # with st.spinner('Generating Response...'):
-            #     st.markdown("----")
+            st.subheader("Response from Impact Theory (context)")
+            with st.spinner('Generating Response...'):
+                 st.markdown("----")
             #     #creates container for LLM response
-            #     chat_container, response_box = [], st.empty()
+                 chat_container, response_box = [], st.empty()
             #     
             #     # execute chat call to LLM
             #                  ##############
@@ -97,17 +122,18 @@ def main():
             #                  ##############
             #                  #  END CODE  #
             #                  ##############
-            #         try:
-                          #inserts chat stream from LLM
-            #             with response_box:
-                        #     content = resp.choices[0].delta.content
-                        #     if content:
-                        #         chat_container.append(content)
-                        #         result = "".join(chat_container).strip()
-                        #         st.write(f'{result}')
-                        # except Exception as e:
-                        #     print(e)
-                        #     continue
+            try:
+                        #inserts chat stream from LLM
+                        with response_box:
+                            #content = resp.choices[0].delta.content
+                            content = prompt
+                            if content:
+                                chat_container.append(content)
+                                result = "".join(chat_container).strip()
+                                st.write(f'{result}')
+            except Exception as e:
+                        print(e)
+                       # continue
             # ##############
             # # START CODE #
             # ##############
