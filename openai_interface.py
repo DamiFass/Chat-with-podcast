@@ -4,7 +4,7 @@ from typing import List, Any, Tuple
 from dotenv import load_dotenv
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
-_ = load_dotenv('./.env', override=True) # read local .env file
+_ = load_dotenv('./keys.env', override=True) # read local .env file
 
 class GPT_Turbo:
 
