@@ -55,7 +55,7 @@ logger.info(available_classes)
 reranker = ReRanker(model_name='cross-encoder/ms-marco-MiniLM-L-6-v2')
 
 ## LLM 
-model_name = 'gpt-3.5-turbo-0613'
+model_name = 'gpt-4-turbo'
 # I should pass the openAI api key here
 llm = GPT_Turbo(model=model_name, api_key=openAI_api_key)
 

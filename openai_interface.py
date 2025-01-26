@@ -8,7 +8,7 @@ _ = load_dotenv('./keys.env', override=True) # read local .env file
 
 class GPT_Turbo:
 
-    def __init__(self, model: str="gpt-3.5-turbo-0613", api_key: str=os.environ['OPENAI_API_KEY']):
+    def __init__(self, model, api_key: str=os.environ['OPENAI_API_KEY']):
         self.model = model
         self.client = OpenAI(api_key=api_key)
 
