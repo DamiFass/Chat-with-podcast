@@ -93,7 +93,7 @@ def main():
 
     with st.sidebar:
         st.subheader(f"Personalise your search!")
-        index = st.selectbox('Select Index/Class. \n Name convention means: <embedding model>_<chunk size>', options=available_classes, index=None, placeholder='Select Index/Class')
+        # index = st.selectbox('Select Index/Class. \n Name convention means: <embedding model>_<chunk size>', options=available_classes, index=None, placeholder='Select Index/Class')
         guest = st.selectbox('Select Guest', options=guest_list, index=None, placeholder='Select Guest')
         alpha_slider = st.slider('Hybrid Search weights: 0 = keyword search, 1 = vector search', 0.00, 1.00, 0.30, step=0.05)
         n_slider = st.slider('Hybrid retrieval hits: lower = less docs considered but quicker, higher = more docs considered but slower', 10, 300, 10, step=10)
