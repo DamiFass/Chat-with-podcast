@@ -5,4 +5,4 @@ This repository was forked from the Uplimit course repository "Building RAG appl
 
 The course teaches search and discovery industry best practices and had the developing of this Retrieval Augmented Generation (RAG) application as final project. The final app consists in a question answering systew through an LLM and UI implementation through Streamlit. It builds up on the work done during the course, where we developed all the components of a RAG system, including: data preprocessing, embedding creation, vector database selection, indexing, retrieval systems, reranking and retrieval evaluation. 
 
-The app is accessible ![here](https://chat-with-impact-theory.streamlit.app/).
+The app is accessible [here](https://chat-with-impact-theory.streamlit.app/).
