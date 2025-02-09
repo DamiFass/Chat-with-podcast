@@ -85,6 +85,10 @@ guest_list = sorted(list(set([d['guest'] for d in data])))
 def hybrid_search_cached(query, index_name, alpha, limit, display_properties, guest_filter):
     return client.hybrid_search(query, index_name, alpha=alpha, limit=limit, display_properties=display_properties, where_filter=guest_filter)
 
+@st.cache_data
+def rerank_results(hybrid_response, query, top_k):
+    return reranker.rerank(hybrid_response, query, top_k=top_k, apply_sigmoid=True)
+
 def main():
 
     with st.sidebar:
@@ -121,11 +125,15 @@ def main():
             #                                        limit=n_slider, 
             #                                        display_properties=client.display_properties, 
             #                                        where_filter=guest_filter)
+
+
             # rerank results
-            ranked_response = reranker.rerank(hybrid_response, 
-                                              query, 
-                                              top_k=k_slider, 
-                                              apply_sigmoid=True)
+            ranked_response = rerank_results(hybrid_response, query, k_slider)
+            
+            # ranked_response = reranker.rerank(hybrid_response, 
+            #                                   query, 
+            #                                   top_k=k_slider, 
+            #                                   apply_sigmoid=True)
             
             # validate token count is below threshold
             token_threshold = 4000
