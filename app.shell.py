@@ -45,7 +45,11 @@ url = os.environ['WEAVIATE_ENDPOINT']
 
 #instantiate client
 # If I want weviate to use a new embedding model (like a fine-tuned one) I should explicitely pass it with the argument model_name_or_path
-client = WeaviateClient(api_key, url)
+@st.cache_resource
+def get_weaviate_client(api_key, url):
+    return WeaviateClient(api_key, url)
+
+client = get_weaviate_client(api_key, url)
 # These are the different datasets available in the Weaviate datastore. I can have different chunk sizes or different embedding models.
 # We can make them available as a drop down menu on the side bar 
 available_classes = sorted(client.show_classes())
