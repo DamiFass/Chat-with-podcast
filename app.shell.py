@@ -77,6 +77,10 @@ data = get_data(data_path)
 #creates list of guests for sidebar
 guest_list = sorted(list(set([d['guest'] for d in data])))
 
+@st.cache_data
+def hybrid_search_cached(query, index_name, alpha, limit, display_properties, guest_filter):
+    return client.hybrid_search(query, index_name, alpha=alpha, limit=limit, display_properties=display_properties, where_filter=guest_filter)
+
 def main():
 
     with st.sidebar:
@@ -103,12 +107,16 @@ def main():
 
             # make hybrid call to weaviate
             guest_filter = WhereFilter(path=['guest'], operator='Equal', valueText=guest).todict() if guest else None
-            hybrid_response = client.hybrid_search(query, 
-                                                   index_name, 
-                                                   alpha=alpha_slider, 
-                                                   limit=n_slider, 
-                                                   display_properties=client.display_properties, 
-                                                   where_filter=guest_filter)
+
+            # Replace this call in `main()`
+            hybrid_response = hybrid_search_cached(query, index_name, alpha_slider, n_slider, client.display_properties, guest_filter)
+
+            # hybrid_response = client.hybrid_search(query, 
+            #                                        index_name, 
+            #                                        alpha=alpha_slider, 
+            #                                        limit=n_slider, 
+            #                                        display_properties=client.display_properties, 
+            #                                        where_filter=guest_filter)
             # rerank results
             ranked_response = reranker.rerank(hybrid_response, 
                                               query, 
