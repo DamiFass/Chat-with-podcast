@@ -105,6 +105,7 @@ def main():
 
     st.image('./assets/impact-theory-logo.png', width=400)
     st.subheader(f"Chat with the Impact Theory podcast: ")
+    st.write("Welcome! Here you can ask questions and get answers from the podcast episodes. Just type your question in the box below and hit enter. Enjoy!")
     st.write('\n')
     col1, _ = st.columns([7,3])
     with col1:
