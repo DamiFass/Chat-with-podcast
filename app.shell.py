@@ -70,7 +70,10 @@ index_name = 'Impact_theory_minilm_256'
 #  END CODE  #
 ##############
 data_path = './data/impact_theory_data.json'
-data = load_data(data_path)
+@st.cache_data
+def get_data(data_path):
+    return load_data(data_path)
+data = get_data(data_path)
 #creates list of guests for sidebar
 guest_list = sorted(list(set([d['guest'] for d in data])))
 
